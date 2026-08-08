@@ -1,0 +1,23 @@
+{
+  "seen": {
+    "synth:1": {
+      "status": "dry-run",
+      "at": "2026-08-08T20:04:32.463120+00:00",
+      "title": "Autumn Echoes 1",
+      "artist": "Synthwave Collective",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-1",
+      "youtube_id": "dry"
+    },
+    "synth:2": {
+      "status": "dry-run",
+      "at": "2026-08-08T20:04:45.853823+00:00",
+      "title": "Autumn Echoes 2",
+      "artist": "Synthwave Collective",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-2",
+      "youtube_id": "dry"
+    }
+  },
+  "published": []
+}
