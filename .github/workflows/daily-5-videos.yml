@@ -33,7 +33,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write   # bot commits auto_state.json back to the repo
 
 jobs:
   daily:
