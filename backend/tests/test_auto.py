@@ -23,6 +23,8 @@ from app.services.jamendo import (
     ("CC BY 4.0", True),
     ("by-sa", True),
     ("zero", True),
+    ("cc0", True),
+    ("CC0", True),
     ("by-nc", False),     # no commercial use
     ("by-nc-sa", False),   # no commercial use
     ("by-nd", False),      # no derivatives

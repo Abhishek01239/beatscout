@@ -34,7 +34,7 @@ API_BASE = "https://api.jamendo.com/v3.0/tracks/"
 #   by-sa -> Attribution-ShareAlike
 #   zero  -> CC0
 # Excluded: -nc (no commercial), -nd (no derivatives).
-ALLOWED_LICENSES = {"by", "by-sa", "zero"}
+ALLOWED_LICENSES = {"by", "by-sa", "zero", "cc0", "cc"}
 
 
 def license_allows(license_name: str) -> bool:
