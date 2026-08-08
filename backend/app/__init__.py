@@ -1,0 +1,1 @@
+"""BeatScout app package."""

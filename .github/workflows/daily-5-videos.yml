@@ -1,0 +1,133 @@
+# BeatScout — daily autonomous pipeline: 5 CC-licensed visualizers to YouTube.
+#
+# - Runs at 05:30 UTC every day (or manually via "Run workflow").
+# - Zero-secret mode: with no secrets configured, the run executes in DRY-RUN
+#   (renders everything, logs what would upload) and still turns GREEN, so
+#   the pipeline is provably alive before any key exists.
+# - With secrets set (Jamendo client id + YouTube OAuth), the same run
+#   publishes 5 real public videos.
+# - auto_state.json is committed back so no track is ever published twice.
+
+name: Daily 5 videos
+
+on:
+  schedule:
+    - cron: "30 5 * * *"          # daily 05:30 UTC
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "videos to publish"
+        required: false
+        default: "5"
+      dry_run:
+        description: "1 = dry run (no real uploads), 0 = publish"
+        required: false
+        default: "1"
+      genres:
+        description: "comma-separated genres"
+        required: false
+        default: "Lo-fi, Ambient, Electronic"
+
+concurrency:
+  group: beatscout-daily
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUNBUFFERED: "1"
+      LIMIT: ${{ github.event.inputs.limit || '5' }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || '1' }}
+      GENRES: ${{ github.event.inputs.genres || 'Lo-fi, Ambient, Electronic' }}
+      JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      # Render at 480p @ 24fps with a 60s clip in CI: keeps the 5-video
+      # batch comfortably inside the job timeout while staying watchable.
+      VIDEO_WIDTH: "854"
+      VIDEO_HEIGHT: "480"
+      VIDEO_FPS: "24"
+      VIDEO_MAX_SECONDS: "60"
+      AUTO_DRY_RUN: ${{ github.event.inputs.dry_run || '1' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Run daily pipeline
+        id: pipeline
+        env:
+          DRY_RUN_FLAG: ${{ env.DRY_RUN == '0' && '--real' || '--dry-run' }}
+        run: |
+          cd backend
+          echo "provider=$(if [ -n "$JAMENDO_CLIENT_ID" ]; then echo jamendo; else echo synth; fi)"
+          python -m app.auto \
+            --limit "$LIMIT" \
+            --genres "$GENRES" \
+            --provider "$(if [ -n "$JAMENDO_CLIENT_ID" ]; then echo jamendo; else echo synth; fi)" \
+            --width "$VIDEO_WIDTH" --height "$VIDEO_HEIGHT" --fps "$VIDEO_FPS" \
+            --max-seconds "$VIDEO_MAX_SECONDS" \
+            $DRY_RUN_FLAG \
+            --state-dir "$GITHUB_WORKSPACE/auto-state" \
+            --storage "$GITHUB_WORKSPACE/storage/auto"
+          echo "summary_done=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit published state
+        if: always()
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          if [ -d auto-state ] && git status --porcelain auto-state | grep -q .; then
+            git config user.name "beatscout-bot"
+            git config user.email "actions@github.com"
+            git add auto-state
+            git commit -m "chore: update auto-state ($(date -u +%Y-%m-%d))" || true
+            # push back so dedupe survives across runs
+            git push origin HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}} || true
+          fi
+
+      - name: Upload videos (artifacts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beatscout-videos-${{ github.run_id }}
+          path: storage/auto/media/*.mp4
+          if-no-files-found: ignore
+
+      - name: Job summary
+        if: always()
+        run: |
+          cd backend
+          python - <<'EOF'
+          import json, glob
+          f = glob.glob("**/storage/auto/media/*.mp4")
+          state = None
+          try:
+              with open("../auto-state/auto_state.json") as fh:
+                  state = json.load(fh)
+          except Exception:
+              pass
+          published = [p for p in (state or {}).get("published", []) if p.get("status") == "published"]
+          print("## BeatScout daily run — summary")
+          print(f"- videos rendered this run: **{len(f)}**")
+          print(f"- published entries in state: **{len(published)}**")
+          for p in published[-5:]:
+              print(f"  - {p.get('title')} → {p.get('video_url')}")
+          EOF

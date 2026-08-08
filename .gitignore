@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# JS / frontend build
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Local databases (dev machine) / demo artifacts
+backend/beatscout.db*
+backend/*.db*
+
+# Rendered media (reproduced each run; commits would bloat the repo)
+storage/
+!storage/.gitkeep
+
+# Auto-pipeline checkpoint — DO commit (this is the dedupe record!)
+# (auto-state/ is intentionally not ignored — the GitHub Action commits it)
+
+# Env / secrets
+.env
+
+# OS / editor
+.DS_Store
+Thumbs.db

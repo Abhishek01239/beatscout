@@ -1,0 +1,37 @@
+# BeatScout — core backend dependencies
+
+# Web framework
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9     # multipart file uploads
+
+# Data layer
+sqlalchemy>=2.0.30,<3
+psycopg[binary]>=3.2,<4      # PostgreSQL driver (prod)
+
+# Settings & validation
+pydantic>=2.8,<3
+pydantic-settings>=2.4,<3
+email-validator>=2.2,<3   # EmailStr support
+
+# Auth
+PyJWT>=2.8,<3
+
+# HTTP client (Spotify / artwork download)
+httpx>=0.27,<1
+
+# --- Media pipeline (core) ---
+numpy>=1.26,<3
+Pillow>=10.4,<12
+imageio-ffmpeg>=0.5   # bundles a modern static ffmpeg binary (libx264+aac)
+# Optional rich audio analysis (falls back to the built-in numpy engine):
+# librosa>=0.10            -> enable via `pip install -r requirements-extra.txt`
+
+# --- Background jobs ---
+celery[redis]>=5.4,<6        # prod worker; local dev uses the fallback worker
+redis>=5.0,<7
+
+# --- Testing ---
+pytest>=8.2,<9
+google-api-python-client>=2.108
+google-auth-oauthlib>=1.2

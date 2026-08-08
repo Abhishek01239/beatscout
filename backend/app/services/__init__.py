@@ -1,0 +1,1 @@
+"""BeatScout service layer: discovery, rights, audio, video, youtube, jobs."""

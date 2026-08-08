@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: beatscout-backend
+    container_name: beatscout-backend
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production-please-32b}
+      - DATABASE_URL=sqlite:////app/storage/beatscout.db
+      - STORAGE_DIR=/app/storage
+      - SEED_DEMO=1
+      - AUTO_RUN_WORKER=1
+      - RATE_LIMIT_ENABLED=1
+      # Optional real integrations (leave empty for mock providers):
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
+      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID:-}
+      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET:-}
+      - YOUTUBE_REDIRECT_URI=${YOUTUBE_REDIRECT_URI:-}
+    volumes:
+      - beatscout_storage:/app/storage
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: beatscout-frontend
+    container_name: beatscout-frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  beatscout_storage:
