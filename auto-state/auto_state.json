@@ -17,6 +17,15 @@
       "license": "by",
       "video_url": "https://www.youtube.com/watch?v=dry-2",
       "youtube_id": "dry"
+    },
+    "synth:3": {
+      "status": "dry-run",
+      "at": "2026-08-08T20:11:20.715079+00:00",
+      "title": "Autumn Echoes 3",
+      "artist": "Synthwave Collective",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-3",
+      "youtube_id": "dry"
     }
   },
   "published": []
