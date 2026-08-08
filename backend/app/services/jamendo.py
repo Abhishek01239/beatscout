@@ -127,31 +127,47 @@ class JamendoProvider:
     def discover(self, *, genres: list[str], release_from: date,
                  release_to: date, limit: int = 30,
                  country: str | None = None) -> list[SpotifyTrackMeta]:
-        params = {
+        """Query each genre tag separately.
+
+        Jamendo treats a comma-separated `tags` value as AND, and some
+        caller-supplied genres (e.g. "lo-fi") are not in Jamendo's tag
+        vocabulary at all — so a single CSV query can silently return
+        nothing. Querying per-genre + union keeps discovery working no
+        matter which tags the caller passes; zero-result genres are
+        simply skipped.
+        """
+        base = {
             "client_id": self.client_id,
             "format": "json",
-            "limit": max(10, min(limit * 3, 200)),  # over-fetch, license-filter
             "include": "musicinfo",
             "audioformat": "mp32",
             "order": "popularity_week",
         }
-        if genres:
-            params["tags"] = ",".join(genres)
-        resp = self._http.get(API_BASE, params=params)
-        resp.raise_for_status()
-        items = resp.json().get("results") or []
+        per_genre = max(5, min(limit * 2, 30))
         out: list[SpotifyTrackMeta] = []
-        for item in items:
-            license_name = (
-                item.get("license_ccname")
-                or license_code_from_url(item.get("license_ccurl") or "")
-                or "unknown"
-            )
-            if not license_allows(license_name):
-                continue
-            out.append(track_from_item(item))
+        seen: set[str] = set()
+        for genre in genres or ["electronic", "ambient"]:
             if len(out) >= limit:
                 break
+            params = dict(base, tags=genre, limit=str(per_genre))
+            resp = self._http.get(API_BASE, params=params)
+            resp.raise_for_status()
+            items = resp.json().get("results") or []
+            for item in items:
+                if len(out) >= limit:
+                    break
+                license_name = (
+                    item.get("license_ccname")
+                    or license_code_from_url(item.get("license_ccurl") or "")
+                    or "unknown"
+                )
+                if not license_allows(license_name):
+                    continue
+                meta = track_from_item(item)
+                if meta.spotify_track_id in seen:
+                    continue
+                seen.add(meta.spotify_track_id)
+                out.append(meta)
         return out
 
     def search(self, query: str, limit: int = 20) -> list[SpotifyTrackMeta]:
