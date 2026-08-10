@@ -26,10 +26,20 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload",
           "https://www.googleapis.com/auth/youtube.readonly"]
 
+# ══════════════════════════════════════════════════════════════════════
+#  PASTE YOUR GOOGLE CLOUD OAUTH CREDENTIALS HERE (step 2 of the setup):
+#  console.cloud.google.com → APIs & Services → Credentials →
+#  OAuth client ID (Desktop app) → copy both values into the quotes.
+YOUTUBE_CLIENT_ID = "PASTE_CLIENT_ID_HERE"
+YOUTUBE_CLIENT_SECRET = "PASTE_CLIENT_SECRET_HERE"
+# ══════════════════════════════════════════════════════════════════════
+
 CLIENT_CONFIG = {
     "installed": {
-        "client_id": os.environ.get("YOUTUBE_CLIENT_ID", ""),
-        "client_secret": os.environ.get("YOUTUBE_CLIENT_SECRET", ""),
+        "client_id": YOUTUBE_CLIENT_ID
+        or os.environ.get("YOUTUBE_CLIENT_ID", ""),
+        "client_secret": YOUTUBE_CLIENT_SECRET
+        or os.environ.get("YOUTUBE_CLIENT_SECRET", ""),
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
         "token_uri": "https://oauth2.googleapis.com/token",
         "redirect_uris": ["http://localhost:8080"],
@@ -38,9 +48,11 @@ CLIENT_CONFIG = {
 
 
 def main() -> int:
-    if not CLIENT_CONFIG["installed"]["client_id"]:
-        print("Error: set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET first "
-              "(backend/.env or environment).", file=sys.stderr)
+    if (not CLIENT_CONFIG["installed"]["client_id"]
+            or CLIENT_CONFIG["installed"]["client_id"] == "PASTE_CLIENT_ID_HERE"):
+        print("Error: paste your Client ID and Client Secret at the top of "
+              "this file (or set YOUTUBE_CLIENT_ID/YOUTUBE_CLIENT_SECRET).",
+              file=sys.stderr)
         return 1
     flow = InstalledAppFlow.from_client_config(CLIENT_CONFIG, SCOPES)
     creds = flow.run_local_server(port=8080, prompt="consent")
