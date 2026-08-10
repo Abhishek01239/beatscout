@@ -161,6 +161,42 @@
       "license": "by-sa",
       "video_url": "https://www.youtube.com/watch?v=dry-2007484",
       "youtube_id": "dry"
+    },
+    "jamendo:1161940": {
+      "status": "dry-run",
+      "at": "2026-08-10T10:40:20.597811+00:00",
+      "title": "In Tune (J. Glaze Remix)",
+      "artist": "Kellee Maize",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-1161940",
+      "youtube_id": "dry"
+    },
+    "jamendo:354778": {
+      "status": "dry-run",
+      "at": "2026-08-10T10:41:32.864573+00:00",
+      "title": "Skydiving (feat. Jasmine Kara)",
+      "artist": "Jonay",
+      "license": "by-sa",
+      "video_url": "https://www.youtube.com/watch?v=dry-354778",
+      "youtube_id": "dry"
+    },
+    "jamendo:1215805": {
+      "status": "dry-run",
+      "at": "2026-08-10T10:42:43.164100+00:00",
+      "title": "Dance with me",
+      "artist": "Manhat10",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-1215805",
+      "youtube_id": "dry"
+    },
+    "jamendo:1215808": {
+      "status": "dry-run",
+      "at": "2026-08-10T10:43:53.399168+00:00",
+      "title": "Dreams",
+      "artist": "Manhat10",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-1215808",
+      "youtube_id": "dry"
     }
   },
   "published": []
