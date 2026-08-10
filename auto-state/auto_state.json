@@ -71,6 +71,51 @@
       "license": "by",
       "video_url": "https://www.youtube.com/watch?v=dry-8",
       "youtube_id": "dry"
+    },
+    "synth:9": {
+      "status": "dry-run",
+      "at": "2026-08-10T06:51:24.842172+00:00",
+      "title": "Autumn Echoes 9",
+      "artist": "Synthwave Collective",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-9",
+      "youtube_id": "dry"
+    },
+    "synth:10": {
+      "status": "dry-run",
+      "at": "2026-08-10T06:51:39.255002+00:00",
+      "title": "Autumn Echoes 10",
+      "artist": "Synthwave Collective",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-10",
+      "youtube_id": "dry"
+    },
+    "synth:11": {
+      "status": "dry-run",
+      "at": "2026-08-10T06:51:53.626228+00:00",
+      "title": "Autumn Echoes 11",
+      "artist": "Synthwave Collective",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-11",
+      "youtube_id": "dry"
+    },
+    "synth:12": {
+      "status": "dry-run",
+      "at": "2026-08-10T06:52:08.081398+00:00",
+      "title": "Autumn Echoes 12",
+      "artist": "Synthwave Collective",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-12",
+      "youtube_id": "dry"
+    },
+    "synth:13": {
+      "status": "dry-run",
+      "at": "2026-08-10T06:52:22.522171+00:00",
+      "title": "Autumn Echoes 13",
+      "artist": "Synthwave Collective",
+      "license": "by",
+      "video_url": "https://www.youtube.com/watch?v=dry-13",
+      "youtube_id": "dry"
     }
   },
   "published": []
