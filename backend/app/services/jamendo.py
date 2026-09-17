@@ -149,7 +149,9 @@ class JamendoProvider:
         base = {
             "client_id": self.client_id,
             "format": "json",
-            "include": "licenses,musicinfo",
+            # Jamendo's []enum parameter must be sent as repeated query keys,
+            # not as the literal string "licenses,musicinfo".
+            "include": ["licenses", "musicinfo"],
             "audioformat": "mp32",
             "audiodlformat": "mp32",
             "order": "relevance",
@@ -251,7 +253,7 @@ class JamendoProvider:
         jam_id = spotify_track_id.removeprefix("jamendo:")
         resp = self._http.get(API_BASE, params={
             "client_id": self.client_id, "format": "json", "id": jam_id,
-            "include": "licenses,musicinfo",
+            "include": ["licenses", "musicinfo"],
         })
         if resp.status_code != 200:
             return None
