@@ -1,11 +1,8 @@
 # BeatScout — daily autonomous pipeline: 5 CC-licensed visualizers to YouTube.
 #
-# - Runs at 05:30 UTC every day (or manually via "Run workflow").
-# - Zero-secret mode: with no secrets configured, the run executes in DRY-RUN
-#   (renders everything, logs what would upload) and still turns GREEN, so
-#   the pipeline is provably alive before any key exists.
-# - With secrets set (Jamendo client id + YouTube OAuth), the same run
-#   publishes 5 real public videos.
+# - Runs at 05:30 UTC every day and publishes when the required secrets exist.
+# - Scheduled runs are REAL by default; manual runs stay DRY-RUN by default.
+# - Manual "Run workflow" can set dry_run=0 to publish immediately.
 # - auto_state.json is committed back so no track is ever published twice.
 
 name: Daily 5 videos
@@ -35,26 +32,28 @@ concurrency:
 permissions:
   contents: write   # bot commits auto_state.json back to the repo
 
+env:
+  # Scheduled runs are live; manual runs default to dry-run unless the user chooses 0.
+  DRY_RUN: ${{ github.event_name == 'schedule' && '0' || github.event.inputs.dry_run || '1' }}
+  LIMIT: ${{ github.event.inputs.limit || '5' }}
+  GENRES: ${{ github.event.inputs.genres || 'Lo-fi, Ambient, Electronic' }}
+  JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
+  YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+  YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+  YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+  # Keep dry-run state isolated so a test run can never consume real dedupe entries.
+  STATE_DIR_NAME: ${{ github.event_name == 'schedule' && 'auto-state' || 'auto-state-dry-run' }}
+  # Render at 480p @ 24fps with a 60s clip in CI: keeps the 5-video
+  # batch comfortably inside the job timeout while staying watchable.
+  VIDEO_WIDTH: "854"
+  VIDEO_HEIGHT: "480"
+  VIDEO_FPS: "24"
+  VIDEO_MAX_SECONDS: "60"
+
 jobs:
   daily:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      PYTHONUNBUFFERED: "1"
-      LIMIT: ${{ github.event.inputs.limit || '5' }}
-      DRY_RUN: ${{ github.event.inputs.dry_run || '1' }}
-      GENRES: ${{ github.event.inputs.genres || 'Lo-fi, Ambient, Electronic' }}
-      JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
-      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-      YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-      # Render at 480p @ 24fps with a 60s clip in CI: keeps the 5-video
-      # batch comfortably inside the job timeout while staying watchable.
-      VIDEO_WIDTH: "854"
-      VIDEO_HEIGHT: "480"
-      VIDEO_FPS: "24"
-      VIDEO_MAX_SECONDS: "60"
-      AUTO_DRY_RUN: ${{ github.event.inputs.dry_run || '1' }}
 
     steps:
       - name: Checkout
@@ -78,20 +77,21 @@ jobs:
           DRY_RUN_FLAG: ${{ env.DRY_RUN == '0' && '--real' || '--dry-run' }}
         run: |
           cd backend
-          echo "provider=$(if [ -n "$JAMENDO_CLIENT_ID" ]; then echo jamendo; else echo synth; fi)"
+          PROVIDER="$(if [ -n "$JAMENDO_CLIENT_ID" ]; then echo jamendo; else echo synth; fi)"
+          echo "provider=$PROVIDER dry_run=$DRY_RUN limit=$LIMIT genres=$GENRES state_dir=$STATE_DIR_NAME"
           python -m app.auto \
             --limit "$LIMIT" \
             --genres "$GENRES" \
-            --provider "$(if [ -n "$JAMENDO_CLIENT_ID" ]; then echo jamendo; else echo synth; fi)" \
+            --provider "$PROVIDER" \
             --width "$VIDEO_WIDTH" --height "$VIDEO_HEIGHT" --fps "$VIDEO_FPS" \
             --max-seconds "$VIDEO_MAX_SECONDS" \
             $DRY_RUN_FLAG \
-            --state-dir "$GITHUB_WORKSPACE/auto-state" \
+            --state-dir "$GITHUB_WORKSPACE/$STATE_DIR_NAME" \
             --storage "$GITHUB_WORKSPACE/storage/auto"
           echo "summary_done=true" >> "$GITHUB_OUTPUT"
 
       - name: Commit published state
-        if: always()
+        if: ${{ always() && env.DRY_RUN == '0' }}
         run: |
           cd "$GITHUB_WORKSPACE"
           if [ -d auto-state ] && git status --porcelain auto-state | grep -q .; then
@@ -99,8 +99,7 @@ jobs:
             git config user.email "actions@github.com"
             git add auto-state
             git commit -m "chore: update auto-state ($(date -u +%Y-%m-%d))" || true
-            # push back so dedupe survives across runs
-            git push origin HEAD:${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}} || true
+            git push origin HEAD:${GITHUB_REF_NAME} || true
           fi
 
       - name: Upload videos (artifacts)
@@ -117,10 +116,10 @@ jobs:
           cd backend
           python - <<'EOF'
           import json, glob
-          f = glob.glob("**/storage/auto/media/*.mp4")
+          f = glob.glob("../storage/auto/media/*.mp4")
           state = None
           try:
-              with open("../auto-state/auto_state.json") as fh:
+              with open(f"../{__import__('os').environ.get('STATE_DIR_NAME', 'auto-state')}/auto_state.json") as fh:
                   state = json.load(fh)
           except Exception:
               pass
