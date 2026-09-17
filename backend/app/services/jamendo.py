@@ -136,9 +136,12 @@ class JamendoProvider:
                  country: str | None = None) -> list[SpotifyTrackMeta]:
         """Discover enough valid tracks by trying aliases and API pages.
 
-        Jamendo's API can return many NC/ND tracks for popular tags.  Ask the
-        API itself to exclude those license families, then keep the explicit
-        license check below as a second rights gate.
+        Jamendo documents ``ccnc``/``ccnd`` as license filters, but in
+        production responses those filters can produce an empty catalog for
+        otherwise valid searches. We therefore query the normal catalog and
+        enforce the commercial/derivative license requirement locally using
+        the returned license_ccurl. This keeps discovery observable and makes
+        the rights gate deterministic.
         """
         if limit <= 0:
             return []
@@ -151,10 +154,6 @@ class JamendoProvider:
             "audiodlformat": "mp32",
             "order": "relevance",
             "boost": "popularity_week",
-            # Only discover licenses compatible with commercial publication
-            # and derivative visualizers. We still verify license_ccurl below.
-            "ccnc": "false",
-            "ccnd": "false",
         }
         page_size = min(max(limit * 2, 50), 200)
         max_pages_per_tag = 5
@@ -171,6 +170,7 @@ class JamendoProvider:
 
         rejected_license = 0
         rejected_audio = 0
+        empty_pages = 0
         for tag in tags:
             if len(out) >= limit:
                 break
@@ -187,7 +187,13 @@ class JamendoProvider:
 
                 items = payload.get("results") or []
                 if not items:
+                    empty_pages += 1
+                    log.info(
+                        "Jamendo query tag=%s page=%s returned 0 results (api_status=%s)",
+                        tag, page + 1, (payload.get("headers") or {}).get("status"),
+                    )
                     break
+
                 for item in items:
                     if len(out) >= limit:
                         break
@@ -196,11 +202,8 @@ class JamendoProvider:
                     if not license_allows(license_name):
                         rejected_license += 1
                         continue
-                    # `audio` is always the stream URL; `audiodownload` is
-                    # empty when the artist has disabled download access.
-                    # The CC license remains the legal gate, so use either
-                    # URL when available instead of silently discarding valid
-                    # CC tracks just because audiodownload is unavailable.
+                    # `audio` is the stream URL; `audiodownload` is optional
+                    # and can be empty when the artist disables downloads.
                     audio_url = item.get("audiodownload") or item.get("audio") or ""
                     if not audio_url:
                         rejected_audio += 1
@@ -216,8 +219,9 @@ class JamendoProvider:
                     break
 
         log.info(
-            "Jamendo discovery: %d valid candidates from %d tags (rejected_license=%d rejected_audio=%d)",
-            len(out), len(tags), rejected_license, rejected_audio,
+            "Jamendo discovery: %d valid candidates from %d tags "
+            "(rejected_license=%d rejected_audio=%d empty_pages=%d)",
+            len(out), len(tags), rejected_license, rejected_audio, empty_pages,
         )
         return out
 
