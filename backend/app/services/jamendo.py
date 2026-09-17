@@ -32,12 +32,7 @@ TAG_ALIASES = {
 
 
 def license_allows(license_name: str) -> bool:
-    """Return True only for CC licenses permitting commercial derivatives.
-
-    Jamendo may return either short codes (``by-sa``) or human-readable names
-    (for example ``Attribution-ShareAlike``).  Normalize both forms instead
-    of assuming the first hyphen-delimited token is the license code.
-    """
+    """Return True only for CC licenses permitting commercial derivatives."""
     raw = (license_name or "").strip().lower()
     if not raw:
         return False
@@ -90,8 +85,6 @@ def track_from_item(item: dict) -> SpotifyTrackMeta:
     if isinstance(tags, str):
         tags = [tags]
     license_url = item.get("license_ccurl") or ""
-    # The URL is the canonical machine-readable license; prefer it over a
-    # localized/human-readable license name returned by Jamendo.
     license_name = license_code_from_url(license_url) or item.get("license_ccname") or "unknown"
     release = item.get("releasedate")
     rdate = None
@@ -141,20 +134,27 @@ class JamendoProvider:
     def discover(self, *, genres: list[str], release_from: date,
                  release_to: date, limit: int = 30,
                  country: str | None = None) -> list[SpotifyTrackMeta]:
-        """Discover enough valid tracks by trying aliases and API pages."""
+        """Discover enough valid tracks by trying aliases and API pages.
+
+        Jamendo's API can return many NC/ND tracks for popular tags.  Ask the
+        API itself to exclude those license families, then keep the explicit
+        license check below as a second rights gate.
+        """
         if limit <= 0:
             return []
 
         base = {
             "client_id": self.client_id,
             "format": "json",
-            # Licenses are returned explicitly; musicinfo supplies tags.
             "include": "licenses,musicinfo",
             "audioformat": "mp32",
             "audiodlformat": "mp32",
-            # Keep search relevance while boosting popular candidates.
             "order": "relevance",
             "boost": "popularity_week",
+            # Only discover licenses compatible with commercial publication
+            # and derivative visualizers. We still verify license_ccurl below.
+            "ccnc": "false",
+            "ccnd": "false",
         }
         page_size = min(max(limit * 2, 50), 200)
         max_pages_per_tag = 5
@@ -169,13 +169,13 @@ class JamendoProvider:
             if tag not in tags:
                 tags.append(tag)
 
+        rejected_license = 0
+        rejected_audio = 0
         for tag in tags:
             if len(out) >= limit:
                 break
             for page in range(max_pages_per_tag):
                 offset = page * page_size
-                # Jamendo's tags parameter is AND semantics. One tag per
-                # request avoids accidental zero-result intersections.
                 params = dict(base, fuzzytags=tag, limit=str(page_size), offset=str(offset))
                 try:
                     resp = self._http.get(API_BASE, params=params)
@@ -194,11 +194,16 @@ class JamendoProvider:
                     license_url = item.get("license_ccurl") or ""
                     license_name = license_code_from_url(license_url) or item.get("license_ccname") or ""
                     if not license_allows(license_name):
+                        rejected_license += 1
                         continue
-                    # Prefer a direct audio URL. Jamendo documents `audio` as
-                    # the stream URL and `audiodownload` as the download URL.
+                    # `audio` is always the stream URL; `audiodownload` is
+                    # empty when the artist has disabled download access.
+                    # The CC license remains the legal gate, so use either
+                    # URL when available instead of silently discarding valid
+                    # CC tracks just because audiodownload is unavailable.
                     audio_url = item.get("audiodownload") or item.get("audio") or ""
                     if not audio_url:
+                        rejected_audio += 1
                         continue
                     item = dict(item)
                     item["audio"] = audio_url
@@ -210,7 +215,10 @@ class JamendoProvider:
                 if len(items) < page_size:
                     break
 
-        log.info("Jamendo discovery: %d valid candidates from %d tags", len(out), len(tags))
+        log.info(
+            "Jamendo discovery: %d valid candidates from %d tags (rejected_license=%d rejected_audio=%d)",
+            len(out), len(tags), rejected_license, rejected_audio,
+        )
         return out
 
     def search(self, query: str, limit: int = 20) -> list[SpotifyTrackMeta]:
