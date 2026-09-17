@@ -3,16 +3,7 @@
 Jamendo exposes its catalog through an open API. Every track carries an
 explicit Creative-Commons license, which is exactly what the autonomous
 pipeline needs: we can legally obtain publication rights for a track
-*source* without waiting on a human reply (Spotify cannot provide this —
-Spotify audio is not redistributable, which is why the app's human-review
-flow uses it, and the autonomous flow uses Jamendo).
-
-Usage in the daily GitHub Action:
-    JAMENDO_CLIENT_ID=xxx  python -m app.auto --provider jamendo
-
-API (public docs):
-    GET https://api.jamendo.com/v3.0/tracks/
-    ?client_id=ID&format=json&limit=N&include=musicinfo&order=popularity_week&tags=...
+source without waiting on a human reply.
 """
 
 from __future__ import annotations
@@ -30,30 +21,30 @@ log = logging.getLogger("beatscout.discovery.jamendo")
 API_BASE = "https://api.jamendo.com/v3.0/tracks/"
 
 # Licenses that allow commercial use + derivative works (our visualizers).
-#   by    -> Attribution
-#   by-sa -> Attribution-ShareAlike
-#   zero  -> CC0
-# Excluded: -nc (no commercial), -nd (no derivatives).
 ALLOWED_LICENSES = {"by", "by-sa", "zero", "cc0", "cc"}
+
+# Jamendo's tag vocabulary is broader than the app's default labels. Keep
+# aliases here so a friendly genre such as "Lo-fi" does not become a
+# zero-result API query.
+TAG_ALIASES = {
+    "lo-fi": ["lofi", "chillout", "chill", "downtempo"],
+    "lofi": ["lofi", "chillout", "chill", "downtempo"],
+    "ambient": ["ambient", "chillout", "atmospheric"],
+    "electronic": ["electronic", "electronica", "dance"],
+}
 
 
 def license_allows(license_name: str) -> bool:
-    """True if a CC license token permits auto-publication by BeatScout.
-
-    Tolerates API quirks: 'by 3.0', 'CC BY 4.0', 'by-nc', url fragments.
-    """
     raw = (license_name or "").strip().lower().replace(" ", "-")
     if not raw:
         return False
     if "/" in raw:
         raw = raw.rstrip("/").split("/")[-1]
-    code = raw.removeprefix("cc-")
-    return bool(_first_code(code))
+    return bool(_first_code(raw.removeprefix("cc-")))
 
 
 def _first_code(code: str) -> str:
-    """'by' | 'by-4.0' | 'CC-BY' -> 'by'; 'by-nc', 'by-nd', 'by-nc-sa' -> ''."""
-    for part in code.split(";"):  # some endpoints return 'by;by-sa'
+    for part in code.split(";"):
         tokens = [t for t in part.replace(".", "-").split("-") if t]
         if not tokens:
             continue
@@ -64,7 +55,6 @@ def _first_code(code: str) -> str:
 
 
 def license_code_from_url(ccurl: str) -> str:
-    """'https://creativecommons.org/licenses/by/3.0/' -> 'by'."""
     url = (ccurl or "").rstrip("/")
     if not url:
         return ""
@@ -122,20 +112,23 @@ class JamendoProvider:
             raise ValueError("JAMENDO_CLIENT_ID is required for Jamendo discovery.")
         self._http = httpx.Client(timeout=30.0, follow_redirects=True)
 
-    # -- provider interface (mirrors Spotify) ---------------------------
+    def _tags_for_genre(self, genre: str) -> list[str]:
+        key = (genre or "").strip().lower()
+        return TAG_ALIASES.get(key, [genre.strip()] if genre.strip() else [])
 
     def discover(self, *, genres: list[str], release_from: date,
                  release_to: date, limit: int = 30,
                  country: str | None = None) -> list[SpotifyTrackMeta]:
-        """Query each genre tag separately.
+        """Discover enough valid tracks by trying aliases and API pages.
 
-        Jamendo treats a comma-separated `tags` value as AND, and some
-        caller-supplied genres (e.g. "lo-fi") are not in Jamendo's tag
-        vocabulary at all — so a single CSV query can silently return
-        nothing. Querying per-genre + union keeps discovery working no
-        matter which tags the caller passes; zero-result genres are
-        simply skipped.
+        Jamendo can return a small/empty page for a tag, and its tags are
+        effectively ANDed when combined. We therefore query one tag at a
+        time, paginate, and continue across aliases/genres until `limit`
+        *license-valid, unique* tracks have been collected.
         """
+        if limit <= 0:
+            return []
+
         base = {
             "client_id": self.client_id,
             "format": "json",
@@ -143,31 +136,60 @@ class JamendoProvider:
             "audioformat": "mp32",
             "order": "popularity_week",
         }
-        per_genre = max(5, min(limit * 2, 30))
+        page_size = min(max(limit * 2, 20), 100)
+        max_pages_per_tag = 5
         out: list[SpotifyTrackMeta] = []
         seen: set[str] = set()
+        tags: list[str] = []
         for genre in genres or ["electronic", "ambient"]:
+            for tag in self._tags_for_genre(genre):
+                if tag and tag not in tags:
+                    tags.append(tag)
+
+        # If the caller supplied only unknown/empty tags, use broad fallback
+        # tags instead of turning a scheduled run into a zero-candidate run.
+        for tag in ["electronic", "ambient", "chillout", "instrumental"]:
+            if tag not in tags:
+                tags.append(tag)
+
+        for tag in tags:
             if len(out) >= limit:
                 break
-            params = dict(base, tags=genre, limit=str(per_genre))
-            resp = self._http.get(API_BASE, params=params)
-            resp.raise_for_status()
-            items = resp.json().get("results") or []
-            for item in items:
-                if len(out) >= limit:
+            for page in range(max_pages_per_tag):
+                offset = page * page_size
+                params = dict(base, tags=tag, limit=str(page_size), offset=str(offset))
+                try:
+                    resp = self._http.get(API_BASE, params=params)
+                    resp.raise_for_status()
+                    payload = resp.json()
+                except (httpx.HTTPError, ValueError) as exc:
+                    log.warning("Jamendo query failed tag=%s page=%s: %s", tag, page + 1, exc)
                     break
-                license_name = (
-                    item.get("license_ccname")
-                    or license_code_from_url(item.get("license_ccurl") or "")
-                    or "unknown"
-                )
-                if not license_allows(license_name):
-                    continue
-                meta = track_from_item(item)
-                if meta.spotify_track_id in seen:
-                    continue
-                seen.add(meta.spotify_track_id)
-                out.append(meta)
+
+                items = payload.get("results") or []
+                if not items:
+                    break
+                for item in items:
+                    if len(out) >= limit:
+                        break
+                    license_name = (
+                        item.get("license_ccname")
+                        or license_code_from_url(item.get("license_ccurl") or "")
+                        or "unknown"
+                    )
+                    if not license_allows(license_name):
+                        continue
+                    meta = track_from_item(item)
+                    if not meta.external_ids.get("audio_url"):
+                        continue
+                    if meta.spotify_track_id in seen:
+                        continue
+                    seen.add(meta.spotify_track_id)
+                    out.append(meta)
+                if len(items) < page_size:
+                    break
+
+        log.info("Jamendo discovery: %d valid candidates from %d tags", len(out), len(tags))
         return out
 
     def search(self, query: str, limit: int = 20) -> list[SpotifyTrackMeta]:
