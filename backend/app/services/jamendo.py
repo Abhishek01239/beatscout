@@ -171,6 +171,7 @@ class JamendoProvider:
         rejected_license = 0
         rejected_audio = 0
         empty_pages = 0
+        api_failures = 0
         for tag in tags:
             if len(out) >= limit:
                 break
@@ -185,12 +186,29 @@ class JamendoProvider:
                     log.warning("Jamendo query failed tag=%s page=%s: %s", tag, page + 1, exc)
                     break
 
+                headers = payload.get("headers") or {}
+                api_status = headers.get("status")
+                api_code = headers.get("code")
+                api_error = headers.get("error_message") or headers.get("error") or ""
+                if api_status != "success":
+                    api_failures += 1
+                    log.warning(
+                        "Jamendo API rejected query tag=%s page=%s status=%s code=%s error=%s",
+                        tag, page + 1, api_status or "unknown", api_code if api_code is not None else "unknown",
+                        api_error or "<no error message>",
+                    )
+                    # An authentication/client-id error will repeat for every tag;
+                    # stop immediately instead of hammering the API.
+                    if api_code not in (None, 0, "0"):
+                        break
+                    continue
+
                 items = payload.get("results") or []
                 if not items:
                     empty_pages += 1
                     log.info(
-                        "Jamendo query tag=%s page=%s returned 0 results (api_status=%s)",
-                        tag, page + 1, (payload.get("headers") or {}).get("status"),
+                        "Jamendo query tag=%s page=%s returned 0 results (api_status=%s code=%s)",
+                        tag, page + 1, api_status, api_code,
                     )
                     break
 
@@ -220,8 +238,8 @@ class JamendoProvider:
 
         log.info(
             "Jamendo discovery: %d valid candidates from %d tags "
-            "(rejected_license=%d rejected_audio=%d empty_pages=%d)",
-            len(out), len(tags), rejected_license, rejected_audio, empty_pages,
+            "(rejected_license=%d rejected_audio=%d empty_pages=%d api_failures=%d)",
+            len(out), len(tags), rejected_license, rejected_audio, empty_pages, api_failures,
         )
         return out
 
@@ -237,7 +255,17 @@ class JamendoProvider:
         })
         if resp.status_code != 200:
             return None
-        items = resp.json().get("results") or []
+        payload = resp.json()
+        headers = payload.get("headers") or {}
+        if headers.get("status") != "success":
+            log.warning(
+                "Jamendo get_track rejected id=%s status=%s code=%s error=%s",
+                jam_id, headers.get("status") or "unknown",
+                headers.get("code") if headers.get("code") is not None else "unknown",
+                headers.get("error_message") or headers.get("error") or "<no error message>",
+            )
+            return None
+        items = payload.get("results") or []
         return track_from_item(items[0]) if items else None
 
     def rate_limit_message(self) -> str:
