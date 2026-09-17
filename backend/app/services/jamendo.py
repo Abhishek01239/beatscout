@@ -23,9 +23,6 @@ API_BASE = "https://api.jamendo.com/v3.0/tracks/"
 # Licenses that allow commercial use + derivative works (our visualizers).
 ALLOWED_LICENSES = {"by", "by-sa", "zero", "cc0", "cc"}
 
-# Jamendo's tag vocabulary is broader than the app's default labels. Keep
-# aliases here so a friendly genre such as "Lo-fi" does not become a
-# zero-result API query.
 TAG_ALIASES = {
     "lo-fi": ["lofi", "chillout", "chill", "downtempo"],
     "lofi": ["lofi", "chillout", "chill", "downtempo"],
@@ -35,12 +32,35 @@ TAG_ALIASES = {
 
 
 def license_allows(license_name: str) -> bool:
-    raw = (license_name or "").strip().lower().replace(" ", "-")
+    """Return True only for CC licenses permitting commercial derivatives.
+
+    Jamendo may return either short codes (``by-sa``) or human-readable names
+    (for example ``Attribution-ShareAlike``).  Normalize both forms instead
+    of assuming the first hyphen-delimited token is the license code.
+    """
+    raw = (license_name or "").strip().lower()
     if not raw:
         return False
     if "/" in raw:
-        raw = raw.rstrip("/").split("/")[-1]
-    return bool(_first_code(raw.removeprefix("cc-")))
+        code = license_code_from_url(raw)
+        if code:
+            return code in ALLOWED_LICENSES
+    normalized = (
+        raw.replace("creative commons", "")
+           .replace("creativecommons", "")
+           .replace("attribution-sharealike", "by-sa")
+           .replace("attribution-noncommercial-sharealike", "by-nc-sa")
+           .replace("attribution-noncommercial-noderivatives", "by-nc-nd")
+           .replace("attribution-noderivatives", "by-nd")
+           .replace("attribution-noncommercial", "by-nc")
+           .replace("attribution", "by")
+           .replace("sharealike", "sa")
+           .replace("noderivatives", "nd")
+           .replace("noncommercial", "nc")
+           .replace(" ", "-")
+           .replace("_", "-")
+    )
+    return bool(_first_code(normalized))
 
 
 def _first_code(code: str) -> str:
@@ -70,7 +90,9 @@ def track_from_item(item: dict) -> SpotifyTrackMeta:
     if isinstance(tags, str):
         tags = [tags]
     license_url = item.get("license_ccurl") or ""
-    license_name = item.get("license_ccname") or license_code_from_url(license_url) or "unknown"
+    # The URL is the canonical machine-readable license; prefer it over a
+    # localized/human-readable license name returned by Jamendo.
+    license_name = license_code_from_url(license_url) or item.get("license_ccname") or "unknown"
     release = item.get("releasedate")
     rdate = None
     if release:
@@ -85,14 +107,14 @@ def track_from_item(item: dict) -> SpotifyTrackMeta:
         artist_name=item.get("artist_name") or "Unknown Artist",
         album_name=item.get("album_name"),
         release_date=rdate,
-        spotify_url=item.get("page") or "",
-        album_art_url=item.get("image") or "",
-        duration_ms=int(item.get("duration", 0) * 1000) if item.get("duration") else None,
+        spotify_url=item.get("shareurl") or item.get("page") or "",
+        album_art_url=item.get("image") or item.get("album_image") or "",
+        duration_ms=int(float(item.get("duration", 0)) * 1000) if item.get("duration") else None,
         popularity_signal=int(item.get("popularity", 0) or 0),
         genres=tags,
         external_ids={
             "jamendo_id": jam_id,
-            "audio_url": item.get("audio") or "",
+            "audio_url": item.get("audio") or item.get("audiodownload") or "",
             "license_url": license_url,
             "license_name": license_name,
             "album_id": str(item.get("album_id", "")),
@@ -119,24 +141,22 @@ class JamendoProvider:
     def discover(self, *, genres: list[str], release_from: date,
                  release_to: date, limit: int = 30,
                  country: str | None = None) -> list[SpotifyTrackMeta]:
-        """Discover enough valid tracks by trying aliases and API pages.
-
-        Jamendo can return a small/empty page for a tag, and its tags are
-        effectively ANDed when combined. We therefore query one tag at a
-        time, paginate, and continue across aliases/genres until `limit`
-        *license-valid, unique* tracks have been collected.
-        """
+        """Discover enough valid tracks by trying aliases and API pages."""
         if limit <= 0:
             return []
 
         base = {
             "client_id": self.client_id,
             "format": "json",
-            "include": "musicinfo",
+            # Licenses are returned explicitly; musicinfo supplies tags.
+            "include": "licenses,musicinfo",
             "audioformat": "mp32",
-            "order": "popularity_week",
+            "audiodlformat": "mp32",
+            # Keep search relevance while boosting popular candidates.
+            "order": "relevance",
+            "boost": "popularity_week",
         }
-        page_size = min(max(limit * 2, 20), 100)
+        page_size = min(max(limit * 2, 50), 200)
         max_pages_per_tag = 5
         out: list[SpotifyTrackMeta] = []
         seen: set[str] = set()
@@ -145,9 +165,6 @@ class JamendoProvider:
             for tag in self._tags_for_genre(genre):
                 if tag and tag not in tags:
                     tags.append(tag)
-
-        # If the caller supplied only unknown/empty tags, use broad fallback
-        # tags instead of turning a scheduled run into a zero-candidate run.
         for tag in ["electronic", "ambient", "chillout", "instrumental"]:
             if tag not in tags:
                 tags.append(tag)
@@ -157,7 +174,9 @@ class JamendoProvider:
                 break
             for page in range(max_pages_per_tag):
                 offset = page * page_size
-                params = dict(base, tags=tag, limit=str(page_size), offset=str(offset))
+                # Jamendo's tags parameter is AND semantics. One tag per
+                # request avoids accidental zero-result intersections.
+                params = dict(base, fuzzytags=tag, limit=str(page_size), offset=str(offset))
                 try:
                     resp = self._http.get(API_BASE, params=params)
                     resp.raise_for_status()
@@ -172,16 +191,18 @@ class JamendoProvider:
                 for item in items:
                     if len(out) >= limit:
                         break
-                    license_name = (
-                        item.get("license_ccname")
-                        or license_code_from_url(item.get("license_ccurl") or "")
-                        or "unknown"
-                    )
+                    license_url = item.get("license_ccurl") or ""
+                    license_name = license_code_from_url(license_url) or item.get("license_ccname") or ""
                     if not license_allows(license_name):
                         continue
-                    meta = track_from_item(item)
-                    if not meta.external_ids.get("audio_url"):
+                    # Prefer a direct audio URL. Jamendo documents `audio` as
+                    # the stream URL and `audiodownload` as the download URL.
+                    audio_url = item.get("audiodownload") or item.get("audio") or ""
+                    if not audio_url:
                         continue
+                    item = dict(item)
+                    item["audio"] = audio_url
+                    meta = track_from_item(item)
                     if meta.spotify_track_id in seen:
                         continue
                     seen.add(meta.spotify_track_id)
@@ -200,6 +221,7 @@ class JamendoProvider:
         jam_id = spotify_track_id.removeprefix("jamendo:")
         resp = self._http.get(API_BASE, params={
             "client_id": self.client_id, "format": "json", "id": jam_id,
+            "include": "licenses,musicinfo",
         })
         if resp.status_code != 200:
             return None
