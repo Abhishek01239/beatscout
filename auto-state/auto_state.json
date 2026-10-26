@@ -1002,6 +1002,21 @@
       "status": "error",
       "at": "2026-10-25T10:02:06.036925+00:00",
       "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:2167010": {
+      "status": "error",
+      "at": "2026-10-26T11:23:07.698101+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:1919608": {
+      "status": "error",
+      "at": "2026-10-26T11:24:15.643221+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:384089": {
+      "status": "error",
+      "at": "2026-10-26T11:25:27.785340+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
     }
   },
   "published": []
