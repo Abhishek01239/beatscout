@@ -1177,6 +1177,46 @@
       "status": "error",
       "at": "2026-10-31T11:04:09.563820+00:00",
       "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:1916124": {
+      "status": "error",
+      "at": "2026-11-01T11:58:23.847476+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:1916589": {
+      "status": "error",
+      "at": "2026-11-01T11:59:34.137941+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:1916606": {
+      "status": "error",
+      "at": "2026-11-01T12:00:43.774239+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:2037706": {
+      "status": "error",
+      "at": "2026-11-01T12:01:51.535526+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:782863": {
+      "status": "error",
+      "at": "2026-11-01T12:02:59.287435+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:1055648": {
+      "status": "error",
+      "at": "2026-11-01T12:04:06.954407+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:2037723": {
+      "status": "error",
+      "at": "2026-11-01T12:05:18.162152+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
+    },
+    "jamendo:1336946": {
+      "status": "error",
+      "at": "2026-11-01T12:06:24.817652+00:00",
+      "error": "('invalid_grant: Bad Request', {'error': 'invalid_grant', 'error_description': 'Bad Request'})"
     }
   },
   "published": []
